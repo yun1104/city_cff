@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 import warnings
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
-
 
 submit_path = 'submission_sample.csv'
 submit_data = pd.read_csv(submit_path)
@@ -21,7 +21,6 @@ scale_data = pd.read_excel(scale_path)
 for column in scale_data.columns[1:]:
     value_mean = scale_data[column].mean()
     scale_data[column].fillna(value_mean)
-
 
 Urbanization_path = '城镇化率.xlsx'
 Urbanization_data = pd.read_excel(Urbanization_path)
@@ -39,6 +38,8 @@ age_data = pd.read_excel(age_path)
 # 有缺失
 life_path = '生活水平.xlsx'
 life_data = pd.read_excel(life_path)
+
+
 # 有多个表,多个表有缺失
 
 
@@ -93,14 +94,15 @@ def create_sliding_windows(data, window_size):
         y.append(data[i + window_size])
     return np.array(X), np.array(y)
 
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 window_size = 6
 scaler = MinMaxScaler()
 res = {}
 group_data = scale_data.groupby(['城市名称'])
-for name,data in group_data:
-    data = data.iloc[:,:-1]
-    data = data.iloc[:,1:]
+for name, data in group_data:
+    data = data.iloc[:, :-1]
+    data = data.iloc[:, 1:]
     X_train, y_train = create_sliding_windows(data.values, window_size)
     X_train = X_train.astype(np.float32)
     y_train = y_train.astype(np.float32)
@@ -131,15 +133,3 @@ for name,data in group_data:
         # predicted_cases = scaler.inverse_transform(np.expand_dims(preds, axis=0)).flatten()
         # print(preds, predicted_cases)
         # res[name] = predicted_cases
-
-
-
-
-
-
-
-
-
-
-
-
