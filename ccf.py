@@ -20,8 +20,9 @@ scale_path = '人口规模.xlsx'
 scale_data = pd.read_excel(scale_path)
 for column in scale_data.columns[1:]:
     value_mean = scale_data[column].mean()
-    scale_data[column].fillna(value_mean)
-
+    scale_data[column].fillna(value_mean,inplace=True)
+zero_rows_to_drop = scale_data[scale_data['常住人口（万人）'] == 0].index
+scale_data = scale_data.drop(zero_rows_to_drop)
 
 Urbanization_path = '城镇化率.xlsx'
 Urbanization_data = pd.read_excel(Urbanization_path)
@@ -62,14 +63,14 @@ class LSTMModel(nn.Module):
             sequences.view(len(sequences), self.seq_len, -1),
             self.hidden
         )
-        last_time_step = lstm_out.view(self.seq_len, len(sequences), self.hidden_size)[-1]
+        last_time_step = lstm_out.view(self.seq_len, len(sequences), self.hidden_size)[-1][-1]
         y_pred = self.linear(last_time_step)
         return y_pred
 
 
 def train_model(model, X_train, y_train, num_epochs):
     loss_fn = torch.nn.MSELoss(reduction='sum')
-    optimiser = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
     for t in range(num_epochs):
         model.hidden = model.reset_hidden_state()
         y_pred = model(X_train)
@@ -79,6 +80,7 @@ def train_model(model, X_train, y_train, num_epochs):
         optimiser.step()
         if t % 10 == 0:
             print(f'Epoch {t} train loss: {loss.item()}')
+            print('------')
 
     return model.eval()
 
@@ -90,25 +92,26 @@ def create_sliding_windows(data, window_size):
     for i in range(len(data) - window_size - 1):
         window = data[i:i + window_size]
         X.append(window)
-        y.append(data[i + window_size])
+        y.append(data[i + window_size][-1])
     return np.array(X), np.array(y)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-window_size = 6
+window_size = 10
 scaler = MinMaxScaler()
-res = {}
+scale_data['人口规模归一化'] = scaler.fit_transform(scale_data['常住人口（万人）'].values.reshape(-1, 1))
+res = []
 group_data = scale_data.groupby(['城市名称'])
 for name,data in group_data:
-    data = data.iloc[:,:-1]
-    data = data.iloc[:,1:]
+    data = data.iloc[:, :-2]
+    data = data.iloc[:, 1:]
     X_train, y_train = create_sliding_windows(data.values, window_size)
     X_train = X_train.astype(np.float32)
     y_train = y_train.astype(np.float32)
     X_train = torch.from_numpy(X_train).float()
     y_train = torch.from_numpy(y_train).float()
     input_size = 2  # 输入特征维度
-    num_layers = 1
-    hidden_size = 128
+    num_layers = 2
+    hidden_size = 512
     num_epochs = 500
     model = LSTMModel(input_size, hidden_size, num_layers, window_size)
     model = model.to(device)
@@ -126,11 +129,22 @@ for name,data in group_data:
         new_seq = test_seq.numpy().flatten()
         new_seq = np.append(new_seq, [pred])
         new_seq = new_seq[1:]
-        print(new_seq)
-        # test_seq = torch.as_tensor(new_seq).view(1, window_size, 1).float()
+        test_seq = torch.as_tensor(new_seq).view(1, window_size, input_size).float()
         # predicted_cases = scaler.inverse_transform(np.expand_dims(preds, axis=0)).flatten()
-        # print(preds, predicted_cases)
-        # res[name] = predicted_cases
+        predicted_cases = np.expand_dims(preds, axis=0).flatten()
+        res.append(predicted_cases.astype(int))
+
+combined_array = np.concatenate(res)
+print(combined_array)
+
+# temp =  [258 ,255 ,338, 503, 536, 366 ,982 ,330, 838 ,380 ,484, 463 ,255, 675 ,621 ,114, 640 ,567,
+# 762, 548, 799 ,573 ,357, 487 ,394 ,428 ,766, 805 ,807 ,406 ,459 ,437 ,190  ,97 ,269 ,627,
+# 399 ,437 ,535 ,774]
+# submit_data['temp'] = temp
+#
+# # # 保存修改后的数据到新的CSV文件
+# submit_data.to_csv('new_submission_sample.csv', index=False)
+
 
 
 
