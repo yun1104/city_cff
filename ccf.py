@@ -18,9 +18,7 @@ density_data = pd.read_excel(density_path)
 
 scale_path = '人口规模.xlsx'
 scale_data = pd.read_excel(scale_path)
-for column in scale_data.columns[1:]:
-    value_mean = scale_data[column].mean()
-    scale_data[column].fillna(value_mean,inplace=True)
+scale_data = scale_data.dropna(subset=['常住人口（万人）'])
 zero_rows_to_drop = scale_data[scale_data['常住人口（万人）'] == 0].index
 scale_data = scale_data.drop(zero_rows_to_drop)
 
@@ -96,14 +94,15 @@ def create_sliding_windows(data, window_size):
     return np.array(X), np.array(y)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-window_size = 10
+window_size = 8
 scaler = MinMaxScaler()
+scale_data['年份归一化'] = scaler.fit_transform(scale_data['年份'].values.reshape(-1, 1))
 scale_data['人口规模归一化'] = scaler.fit_transform(scale_data['常住人口（万人）'].values.reshape(-1, 1))
 res = []
 group_data = scale_data.groupby(['城市名称'])
 for name,data in group_data:
-    data = data.iloc[:, :-2]
-    data = data.iloc[:, 1:]
+    data = data.sort_values(by='年份')
+    data = data.iloc[:, -2:]
     X_train, y_train = create_sliding_windows(data.values, window_size)
     X_train = X_train.astype(np.float32)
     y_train = y_train.astype(np.float32)
@@ -130,22 +129,23 @@ for name,data in group_data:
         new_seq = np.append(new_seq, [pred])
         new_seq = new_seq[1:]
         test_seq = torch.as_tensor(new_seq).view(1, window_size, input_size).float()
-        # predicted_cases = scaler.inverse_transform(np.expand_dims(preds, axis=0)).flatten()
-        predicted_cases = np.expand_dims(preds, axis=0).flatten()
+        predicted_cases = scaler.inverse_transform(np.expand_dims(preds, axis=0)).flatten()
+        # predicted_cases = np.expand_dims(preds, axis=0).flatten()
         res.append(predicted_cases.astype(int))
 
 combined_array = np.concatenate(res)
 print(combined_array)
 
-# temp =  [258 ,255 ,338, 503, 536, 366 ,982 ,330, 838 ,380 ,484, 463 ,255, 675 ,621 ,114, 640 ,567,
-# 762, 548, 799 ,573 ,357, 487 ,394 ,428 ,766, 805 ,807 ,406 ,459 ,437 ,190  ,97 ,269 ,627,
-# 399 ,437 ,535 ,774]
+# temp =  [ 296,  220  ,478  ,464 , 498 , 292,  909 , 284 ,1575 , 485 , 551 , 674 , 215 , 976,
+#   862 , 188 , 756 , 820 , 742 , 542 , 986 , 612 ,1378 , 444 , 459 , 471 , 920 , 715,
+#   706  ,392 , 456 , 399 , 213 , 114  ,319 ,1105 , 848  ,502 , 485 , 596]
+#
 # submit_data['temp'] = temp
 #
 # # # 保存修改后的数据到新的CSV文件
 # submit_data.to_csv('new_submission_sample.csv', index=False)
 
-
+#
 
 
 
