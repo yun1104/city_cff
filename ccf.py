@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import warnings
 from functools import reduce
+from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import matplotlib.pyplot as plt
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -37,22 +38,22 @@ salary_melted['年份'] = salary_melted['年份'].str.replace('年', '').astype(
 # age_path = '年龄结构.xlsx'
 # age_data = pd.read_excel(age_path).rename(columns={'城市': '城市名称'})
 
-# life_path = '生活水平.xlsx'
-# life_data = pd.read_excel(life_path)
-# life_avg_in = pd.read_excel(life_path, '人均可支配收入', header=1)
-# life_avg_out = pd.read_excel(life_path, '人均消费支出', header=1)
-# life_urban_avg_in = pd.read_excel(life_path, '城镇居民人均收入', header=1)
-# life_urban_avg_out = pd.read_excel(life_path, '城镇居民消费支出', header=1)
-# life_rural_avg_in = pd.read_excel(life_path, '农村居民人均收入', header=1)
-# life_rural_avg_out = pd.read_excel(life_path, '农村居民消费支出', header=1)
-# life_tables = [life_avg_in, life_avg_out, life_urban_avg_in, life_urban_avg_out, life_rural_avg_in, life_rural_avg_out]
-# life_varname = ['人均可支配收入', '人均消费支出', '城镇居民人均收入', '城镇居民消费支出', '农村居民人均收入', '农村居民消费支出']
-# for i in range(len(life_tables)):
-#     life_tables[i] = life_tables[i].melt(id_vars='城市名称', var_name='年份', value_name=life_varname[i])
+life_path = '生活水平.xlsx'
+life_data = pd.read_excel(life_path)
+life_avg_in = pd.read_excel(life_path, '人均可支配收入', header=1)
+life_avg_out = pd.read_excel(life_path, '人均消费支出', header=1)
+life_urban_avg_in = pd.read_excel(life_path, '城镇居民人均收入', header=1)
+life_urban_avg_out = pd.read_excel(life_path, '城镇居民消费支出', header=1)
+life_rural_avg_in = pd.read_excel(life_path, '农村居民人均收入', header=1)
+life_rural_avg_out = pd.read_excel(life_path, '农村居民消费支出', header=1)
+life_tables = [life_avg_in, life_avg_out, life_urban_avg_in, life_urban_avg_out, life_rural_avg_in, life_rural_avg_out]
+life_varname = ['人均可支配收入', '人均消费支出', '城镇居民人均收入', '城镇居民消费支出', '农村居民人均收入', '农村居民消费支出']
+for i in range(len(life_tables)):
+    life_tables[i] = life_tables[i].melt(id_vars='城市名称', var_name='年份', value_name=life_varname[i])
 
 # 合并
 data_tables = [scale_data, density_data, urbanization_data, work1_data, work2_data, work3_data, salary_melted]
-# data_tables.extend(life_tables)
+data_tables.extend(life_tables)
 for i in range(len(data_tables)):
     data_tables[i]['城市名称'] = data_tables[i]['城市名称'].str.replace(' ', '')
     data_tables[i]['城市名称'] = data_tables[i]['城市名称'].str.replace('ctiy', 'city')
@@ -61,7 +62,7 @@ for i in range(len(data_tables)):
 data_table = reduce(lambda left, right: pd.merge(left, right, on=['城市名称', '年份'], how='outer'), data_tables)
 
 # 去重
-data_table = data_table.drop_duplicates(subset=['城市名称', '年份'])
+data_table = data_table.drop_duplicates(subset=['城市名称', '年份'],)
 
 # 排序
 data_table = data_table.sort_values(by=['城市名称', '年份'])
@@ -71,7 +72,7 @@ data_table.to_excel('merged_file.xlsx', index=False)
 df = pd.read_excel("merged_file.xlsx")
 
 # 根据条件筛选出需要删除的行
-rows_to_delete = df[(df["年份"] < 2006) | (df["年份"] == 2022)]
+rows_to_delete = df[(df["年份"] <2005) | (df["年份"] ==2022)]
 
 # 删除符合条件的行
 df = df.drop(rows_to_delete.index)
@@ -79,36 +80,44 @@ df = df.drop(rows_to_delete.index)
 # 保存修改后的数据到新的Excel文件
 df.to_excel("new_modified_file.xlsx", index=False)
 
+# real_data = pd.read_excel('new_modified_file.xlsx')
 real_data = pd.read_excel('new_modified_file.xlsx')
 # 缺失值处理
 grouped_data = real_data.groupby(['城市名称'])
-temp_data = pd.DataFrame()
 temp_list = []
 for name ,data in grouped_data:
     for column in data.columns[1:]:
-        data[column] = data[column].fillna(method='bfill').fillna(method='ffill')
-    data = data.dropna(axis=1, how='any')
-    temp_list.append(data)
-# 缺失值处理
-#异常值处理
-
-new_temp_list = []
-for group_df in temp_list:
-    for column in group_df.columns:
-        # group_df[column] = group_df[column].replace(0, method='bfill').replace(0, method='ffill')
-        # zero_cols = group_df.columns[(group_df == 0).any()]
-        # group_df = group_df.drop(zero_cols, axis=1)
-        value = group_df[column]
+        value = data[column]
         value_mean = value.mean()
         value_std = value.std()
         outliers = (value > value_mean + 3 * value_std) | (value < value_mean - 3 * value_std)
-        if outliers.iloc[0]:
-            group_df[column] = group_df[column].bfill()
-        elif outliers.iloc[-1]:
-            group_df[column] = group_df[column].ffill()
-        # scaled_values = scaler.fit_transform(group_df[[column]])
-        # group_df[column] = scaled_values.flatten()
-    new_temp_list.append(group_df)
+        if outliers.any():
+            # 将异常值替换为 NaN
+            data.loc[outliers, column] = np.nan
+    data = data.dropna(axis=1, how='all')
+    temp_list.append(data)
+
+# 缺失值处理
+#异常值处理
+new_temp_list = []
+for data in temp_list:
+    data = data.dropna(axis=1, how='all')
+    first_column = data.iloc[:, 1:2]
+    for column in data.columns[2:]:
+        combined_column = pd.concat([first_column, data[column]], axis=1)
+        train_data = combined_column[combined_column[column].notnull()]
+        X_train = train_data['年份']
+        y_train = train_data[column]
+        valid_data = combined_column[combined_column[column].isnull()]
+        x_valid = valid_data['年份']
+        if not valid_data.empty:
+            model = LinearRegression()
+            model.fit(X_train.values.reshape(-1, 1), y_train.values.reshape(-1, 1))
+            predictions = pd.DataFrame(columns=data.columns)
+            predictions['年份'] = x_valid
+            predictions[column] = model.predict(x_valid.values.reshape(-1, 1))
+            data.update(predictions)
+    new_temp_list.append(data)
 # 异常值处理
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, seq_len):
@@ -137,7 +146,7 @@ class LSTMModel(nn.Module):
 
 def train_model(model, X_train, y_train, num_epochs):
     loss_fn = torch.nn.MSELoss(reduction='sum')
-    optimiser = torch.optim.Adam(model.parameters(), lr=0.006)
+    optimiser = torch.optim.Adam(model.parameters(), lr=0.004)
     best_train_loss = float('inf')
     counter = 0
     patience = 200
@@ -190,7 +199,7 @@ def create_sliding_windows(data, window_size):
     return np.array(X), np.array(y)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-window_size = 6
+window_size = 8
 scaler = MinMaxScaler()
 a = 0
 res = []
@@ -209,7 +218,7 @@ for data in new_temp_list:
     y_train = torch.from_numpy(y_train).float()
     input_size = len(data.columns)  # 输入特征维度
     num_layers = 2
-    hidden_size = 13
+    hidden_size = 30
     num_epochs = 1000
     model = LSTMModel(input_size, hidden_size, num_layers, window_size)
     model = model.to(device)
