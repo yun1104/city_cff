@@ -86,21 +86,6 @@ real_data = pd.read_excel('new_modified_file.xlsx')
 grouped_data = real_data.groupby(['城市名称'])
 temp_list = []
 for name ,data in grouped_data:
-    for column in data.columns[1:]:
-        value = data[column]
-        value_mean = value.mean()
-        value_std = value.std()
-        outliers = (value > value_mean + 10 * value_std) | (value < value_mean - 10 * value_std)
-        if outliers.any():
-            # 将异常值替换为 NaN
-            data.loc[outliers, column] = np.nan
-    data = data.dropna(axis=1, how='all')
-    temp_list.append(data)
-
-# 缺失值处理
-#异常值处理
-new_temp_list = []
-for data in temp_list:
     data = data.dropna(axis=1, how='all')
     first_column = data.iloc[:, 1:2]
     for column in data.columns[2:]:
@@ -117,8 +102,8 @@ for data in temp_list:
             predictions['年份'] = x_valid
             predictions[column] = model.predict(x_valid.values.reshape(-1, 1))
             data.update(predictions)
-    new_temp_list.append(data)
-# 异常值处理
+    temp_list.append(data)
+
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, seq_len):
         super(LSTMModel, self).__init__()
@@ -200,11 +185,11 @@ def create_sliding_windows(data, window_size):
     return np.array(X), np.array(y)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-window_size = 9
+window_size = 10
 scaler = MinMaxScaler()
 a = 0
 res = []
-for data in new_temp_list:
+for data in temp_list:
     data = data.iloc[:, 1:]
     a= a+1
     print('我是city:',a)
