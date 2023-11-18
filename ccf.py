@@ -72,7 +72,7 @@ data_table.to_excel('merged_file.xlsx', index=False)
 df = pd.read_excel("merged_file.xlsx")
 
 # 根据条件筛选出需要删除的行
-rows_to_delete = df[(df["年份"] <2005) | (df["年份"] ==2022)]
+rows_to_delete = df[(df["年份"] <2005)|(df["年份"] ==2022)]
 
 # 删除符合条件的行
 df = df.drop(rows_to_delete.index)
@@ -90,7 +90,7 @@ for name ,data in grouped_data:
         value = data[column]
         value_mean = value.mean()
         value_std = value.std()
-        outliers = (value > value_mean + 3 * value_std) | (value < value_mean - 3 * value_std)
+        outliers = (value > value_mean + 10 * value_std) | (value < value_mean - 10 * value_std)
         if outliers.any():
             # 将异常值替换为 NaN
             data.loc[outliers, column] = np.nan
@@ -125,8 +125,9 @@ class LSTMModel(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.seq_len = seq_len
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, dropout=0.4)
-        self.linear = nn.Linear(in_features=hidden_size, out_features=1)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, dropout=0.3)
+        self.linear1 = nn.Linear(in_features=hidden_size, out_features=input_size)
+
 
     def reset_hidden_state(self):
         self.hidden = (
@@ -140,16 +141,16 @@ class LSTMModel(nn.Module):
             self.hidden
         )
         last_time_step = lstm_out.view(self.seq_len, len(sequences), self.hidden_size)[-1]
-        y_pred = self.linear(last_time_step)
+        y_pred = self.linear1(last_time_step)
         return y_pred
 
 
-def train_model(model, X_train, y_train, num_epochs):
+def train_model(model, X_train, y_train, num_epochs,a):
     loss_fn = torch.nn.MSELoss(reduction='sum')
-    optimiser = torch.optim.Adam(model.parameters(), lr=0.004)
+    optimiser = torch.optim.Adam(model.parameters(), lr=0.005)
     best_train_loss = float('inf')
     counter = 0
-    patience = 200
+    patience = 300
     avg_loss_list = []
     for t in range(num_epochs):
         total_loss = 0
@@ -172,7 +173,7 @@ def train_model(model, X_train, y_train, num_epochs):
         if t % 10 == 0:
             print(f'Epoch {t} train loss: {avg_loss}')
             print('------')
-        if avg_loss < best_train_loss:
+        if avg_loss < best_train_loss :
             best_train_loss = avg_loss
             counter = 0
         else:
@@ -181,9 +182,9 @@ def train_model(model, X_train, y_train, num_epochs):
                 print(f'Early stopping at epoch {t}')
                 break
     plt.plot(range(t+1), avg_loss_list)
-    plt.xlabel('Batch')
+    plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    plt.title('Training Loss')
+    plt.title(f'city{a}Training Loss')
     plt.show()
     return model.eval()
 
@@ -195,11 +196,11 @@ def create_sliding_windows(data, window_size):
     for i in range(len(data) - window_size - 1):
         window = data[i:i + window_size]
         X.append(window)
-        y.append(data[i + window_size][1])
+        y.append(data[i + window_size])
     return np.array(X), np.array(y)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-window_size = 8
+window_size = 9
 scaler = MinMaxScaler()
 a = 0
 res = []
@@ -217,25 +218,26 @@ for data in new_temp_list:
     X_train = torch.from_numpy(X_train).float()
     y_train = torch.from_numpy(y_train).float()
     input_size = len(data.columns)  # 输入特征维度
-    num_layers = 2
-    hidden_size = 30
-    num_epochs = 1000
+    num_layers = 1
+    hidden_size = 2*input_size+3
+    num_epochs = 2000
     model = LSTMModel(input_size, hidden_size, num_layers, window_size)
     model = model.to(device)
     X_train = X_train.to(device)  # 将训练数据移动到GPU设备上
     y_train = y_train.to(device)
-    model = train_model(model, X_train, y_train, num_epochs)
+    model = train_model(model, X_train, y_train, num_epochs,a)
     with torch.no_grad():
         model = model.cpu()
         model.hidden = (model.hidden[0].cpu(), model.hidden[1].cpu())
         test_seq = X_train[-1:].cpu()
-        y_test_pred = model(test_seq)
-        pred = torch.flatten(y_test_pred).item()
-        new_seq = test_seq.numpy().flatten()
-        new_seq = np.append(new_seq, [pred])
-        new_seq = new_seq[1:]
-        test_seq = torch.as_tensor(new_seq).view(1, window_size, input_size).float()
-        preds_inverse = pred * (max_val[1] - min_val[1]) + min_val[1]
+        for i in range(1):
+            y_test_pred = model(test_seq)
+            pred = torch.flatten(y_test_pred)
+            new_seq = test_seq.numpy().flatten()
+            new_seq = np.concatenate((new_seq, pred.numpy()))
+            new_seq = new_seq[input_size:]
+            test_seq = torch.as_tensor(new_seq).view(1, window_size, input_size).float()
+        preds_inverse = pred[1].item() * (max_val[1] - min_val[1]) + min_val[1]
         # predicted_cases = np.expand_dims(pred, axis=0).flatten()
         print(preds_inverse)
         res.append(round(preds_inverse))
@@ -252,7 +254,7 @@ submit_data.to_csv('new_submission_sample.csv', index=False)
 
 
 
-#
+
 
 
 
