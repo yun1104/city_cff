@@ -8,14 +8,15 @@ from functools import reduce
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import matplotlib.pyplot as plt
+import statsmodels.api as sm
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 submit_path = 'submission_sample.csv'
 submit_data = pd.read_csv(submit_path)
 
-density_path = '人口密度.xlsx'
-density_data = pd.read_excel(density_path)
+# density_path = '人口密度.xlsx'
+# density_data = pd.read_excel(density_path)
 
 scale_path = '人口规模.xlsx'
 scale_data = pd.read_excel(scale_path)
@@ -52,7 +53,7 @@ for i in range(len(life_tables)):
     life_tables[i] = life_tables[i].melt(id_vars='城市名称', var_name='年份', value_name=life_varname[i])
 
 # 合并
-data_tables = [scale_data, density_data, urbanization_data, work1_data, work2_data, work3_data, salary_melted]
+data_tables = [scale_data, urbanization_data, work1_data, work2_data, work3_data, salary_melted]
 data_tables.extend(life_tables)
 for i in range(len(data_tables)):
     data_tables[i]['城市名称'] = data_tables[i]['城市名称'].str.replace(' ', '')
@@ -72,7 +73,7 @@ data_table.to_excel('merged_file.xlsx', index=False)
 df = pd.read_excel("merged_file.xlsx")
 
 # 根据条件筛选出需要删除的行
-rows_to_delete = df[(df["年份"] <2005)|(df["年份"] ==2022)]
+rows_to_delete = df[(df["年份"] <2003) | (df["年份"] == 2022)]
 
 # 删除符合条件的行
 df = df.drop(rows_to_delete.index)
@@ -80,28 +81,55 @@ df = df.drop(rows_to_delete.index)
 # 保存修改后的数据到新的Excel文件
 df.to_excel("new_modified_file.xlsx", index=False)
 
-# real_data = pd.read_excel('new_modified_file.xlsx')
+
 real_data = pd.read_excel('new_modified_file.xlsx')
 # 缺失值处理
 grouped_data = real_data.groupby(['城市名称'])
+new_temp_list = []
+for name,group_df in grouped_data:
+    for column in group_df.columns[3:]:
+        value = group_df[column]
+        max_value = value.max()
+        min_value = value.min()
+        new_value = value[(value != max_value) & (value != min_value)]
+        new_value_mean = new_value.mean()
+        new_value_std = new_value.std()
+        outliers = (value > new_value_mean + 3* new_value_std) | (value < new_value_mean - 3*new_value_std)
+        group_df[column] = group_df[column] = np.where(outliers, np.nan, value)
+    new_temp_list.append(group_df)
 temp_list = []
-for name ,data in grouped_data:
-    data = data.dropna(axis=1, how='all')
+for data in new_temp_list:
     first_column = data.iloc[:, 1:2]
-    for column in data.columns[2:]:
+    for column in data.columns[2:11]:
         combined_column = pd.concat([first_column, data[column]], axis=1)
         train_data = combined_column[combined_column[column].notnull()]
         X_train = train_data['年份']
         y_train = train_data[column]
         valid_data = combined_column[combined_column[column].isnull()]
         x_valid = valid_data['年份']
-        if not valid_data.empty:
+        if not valid_data.empty and not train_data.empty:
             model = LinearRegression()
             model.fit(X_train.values.reshape(-1, 1), y_train.values.reshape(-1, 1))
             predictions = pd.DataFrame(columns=data.columns)
             predictions['年份'] = x_valid
             predictions[column] = model.predict(x_valid.values.reshape(-1, 1))
             data.update(predictions)
+    eleven_column = data.iloc[:, 10:11]
+    for column in data.columns[11:]:
+        combined_column = pd.concat([eleven_column, data[column]], axis=1)
+        train_data = combined_column[combined_column[column].notnull()]
+        X_train = train_data['averageWage']
+        y_train = train_data[column]
+        valid_data = combined_column[combined_column[column].isnull()]
+        x_valid = valid_data['averageWage']
+        if not valid_data.empty and not train_data.empty:
+            model = LinearRegression()
+            model.fit(X_train.values.reshape(-1, 1), y_train.values.reshape(-1, 1))
+            predictions = pd.DataFrame(columns=data.columns)
+            predictions['averageWage'] = x_valid
+            predictions[column] = model.predict(x_valid.values.reshape(-1, 1))
+            data.update(predictions)
+    data = data.dropna(axis=1, how='all')
     temp_list.append(data)
 
 class LSTMModel(nn.Module):
@@ -110,7 +138,7 @@ class LSTMModel(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.seq_len = seq_len
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, dropout=0.3)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, dropout=0.2)
         self.linear1 = nn.Linear(in_features=hidden_size, out_features=input_size)
 
 
@@ -132,10 +160,10 @@ class LSTMModel(nn.Module):
 
 def train_model(model, X_train, y_train, num_epochs,a):
     loss_fn = torch.nn.MSELoss(reduction='sum')
-    optimiser = torch.optim.Adam(model.parameters(), lr=0.005)
+    optimiser = torch.optim.Adam(model.parameters(), lr=0.007)
     best_train_loss = float('inf')
     counter = 0
-    patience = 300
+    patience = 240
     avg_loss_list = []
     for t in range(num_epochs):
         total_loss = 0
@@ -185,7 +213,7 @@ def create_sliding_windows(data, window_size):
     return np.array(X), np.array(y)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-window_size = 10
+window_size =5
 scaler = MinMaxScaler()
 a = 0
 res = []
@@ -232,9 +260,9 @@ print(res)
 submit_data['pred'] =res
 # 保存修改后的数据到新的CSV文件
 submit_data.to_csv('new_submission_sample.csv', index=False)
-# #
 
 
+#
 
 
 
